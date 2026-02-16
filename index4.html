@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>3D Data Visualization - Assignment</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Google Identity -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+    <style>
+        body { margin:0; overflow:hidden; font-family:Helvetica; background:#ffffff; }
+
+        #login-container {
+            position:absolute;
+            top:50%; left:50%;
+            transform:translate(-50%,-50%);
+            background:#fff;
+            padding:40px;
+            border-radius:10px;
+            text-align:center;
+            z-index:1000;
+            border: 1px solid rgba(133, 133, 133, 0.5);
+        }
+
+        #menu {
+            position:absolute;
+            bottom:20px;
+            width:100%;
+            text-align:center;
+            display:none;
+            z-index:100;
+        }
+
+        button {
+            padding:8px 15px;
+            margin:5px;
+            cursor:pointer;
+        }
+
+        .element {
+            width:140px;
+            height:180px;
+            border-radius:8px;
+            text-align:center;
+            padding:10px;
+            box-shadow:0 0 10px rgba(255,255,255,0.2);
+            color:#fff;
+        }
+
+        .number { font-size:12px; text-align:left; }
+        .symbol { font-size:18px; font-weight:bold; margin-top:5px; }
+        .details { font-size:12px; margin-top:5px; }
+    </style>
+</head>
+<body>
+
+<div id="login-container">
+    <h2>Welcome Back</h2>
+    <h3>Sign in with Google</h3>
+
+    <div id="g_id_onload"
+        data-client_id="316984336046-aqb0cmgoq5j5i3bs7g3otdt0v8prf1o3.apps.googleusercontent.com"
+        data-context="signin"
+        data-ux_mode="popup"
+        data-callback="handleCredentialResponse"
+        data-auto_prompt="false">
+    </div>
+
+    <div class="g_id_signin"
+        data-type="standard"
+        data-size="large">
+    </div>
+</div>
+
+<div id="container"></div>
+
+<div id="menu">
+    <button id="table">TABLE</button>
+    <button id="sphere">SPHERE</button>
+    <button id="helix">DOUBLE HELIX</button>
+    <button id="grid">GRID</button>
+</div>
+
+<script>
+function handleCredentialResponse(response) {
+    console.log("Login successful");
+    if (window.startApp) {
+        window.startApp();
+    }
+}
+</script>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.128.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.128.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+
+import * as THREE from 'three';
+import TWEEN from 'three/addons/libs/tween.module.js';
+import { TrackballControls } from 'three/addons/controls/TrackballControls.js';
+import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
+
+const SHEET_ID = "1ZhbL3GxUsfNd5Pbl0SAiFwEcubUT29lRyb1VdQq4KrQ";
+const SHEET_RANGE = "Sheet1!A2:F";
+
+let camera, scene, renderer, controls;
+let objects = [];
+const targets = { table: [], sphere: [], helix: [], grid: [] };
+
+
+async function loadSheetData() {
+
+    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json`;
+    const res = await fetch(url);
+    const text = await res.text();
+    const json = JSON.parse(text.substring(47).slice(0,-2));
+    const rows = json.table.rows;
+    console.log("Fetching sheet...");
+    console.log("Rows:", rows);
+
+
+    buildTiles(rows);
+}
+
+function buildTiles(rows) {
+
+    for (let i = 0; i < rows.length; i++) {
+
+        const row = rows[i].c;
+
+        const id = row[0]?.v || "";
+        const name = row[1]?.v || "";
+        const age = row[2]?.v || "";
+        const city = row[3]?.v || "";
+        const profession = row[4]?.v || "";
+        const netWorth = parseFloat(row[5]?.v) || 0;
+
+        const element = document.createElement('div');
+        element.className = 'element';
+        element.style.backgroundColor = getColor(netWorth);
+
+        element.innerHTML = `
+            <div class="number">${id}</div>
+            <div class="symbol">${name}</div>
+            <div class="details">
+                Age: ${age}<br>
+                ${city}<br>
+                ${profession}<br>
+                $${netWorth.toLocaleString()}
+            </div>
+        `;
+
+        const objectCSS = new CSS3DObject(element);
+        objectCSS.position.x = Math.random()*4000-2000;
+        objectCSS.position.y = Math.random()*4000-2000;
+        objectCSS.position.z = Math.random()*4000-2000;
+
+        scene.add(objectCSS);
+        objects.push(objectCSS);
+    }
+
+    generateLayouts();
+    transform(targets.table,2000);
+}
+
+function getColor(netWorth){
+    if(netWorth < 100000) return "rgba(255,0,0,0.85)";
+    if(netWorth < 200000) return "rgba(255,165,0,0.85)";
+    return "rgba(0,200,0,0.85)";
+}
+
+function generateLayouts(){
+
+    // TABLE 20x10
+    for(let i=0;i<objects.length;i++){
+        const obj=new THREE.Object3D();
+        const col=i%20;
+        const row=Math.floor(i/20);
+        obj.position.x=(col*160)-1500;
+        obj.position.y=-(row*200)+900;
+        targets.table.push(obj);
+    }
+
+    // SPHERE
+    for(let i=0;i<objects.length;i++){
+        const phi=Math.acos(-1+(2*i)/objects.length);
+        const theta=Math.sqrt(objects.length*Math.PI)*phi;
+        const obj=new THREE.Object3D();
+        obj.position.setFromSphericalCoords(900,phi,theta);
+        targets.sphere.push(obj);
+    }
+
+    // DOUBLE HELIX
+    for(let i=0;i<objects.length;i++){
+        const obj=new THREE.Object3D();
+        const helixIndex=Math.floor(i/2);
+        const isEven=i%2===0;
+        const offset=isEven?0:Math.PI;
+        const t=helixIndex/(objects.length/2);
+        const angle=t*Math.PI*4+offset;
+        const y=(t-0.5)*1500;
+        obj.position.x=800*Math.cos(angle);
+        obj.position.z=800*Math.sin(angle);
+        obj.position.y=y;
+        targets.helix.push(obj);
+    }
+
+    // GRID 5x4x10
+    const width=5, height=4;
+    for(let i=0;i<objects.length;i++){
+        const obj=new THREE.Object3D();
+        const x=i%width;
+        const y=Math.floor(i/width)%height;
+        const z=Math.floor(i/(width*height));
+        obj.position.x=(x-2)*400;
+        obj.position.y=(2-y)*400;
+        obj.position.z=(z-5)*800;
+        targets.grid.push(obj);
+    }
+}
+
+function init(){
+    camera=new THREE.PerspectiveCamera(40,window.innerWidth/window.innerHeight,1,10000);
+    camera.position.z=3000;
+
+    scene=new THREE.Scene();
+
+    renderer=new CSS3DRenderer();
+    renderer.setSize(window.innerWidth,window.innerHeight);
+    document.getElementById("container").appendChild(renderer.domElement);
+
+    controls=new TrackballControls(camera,renderer.domElement);
+    controls.minDistance=500;
+    controls.maxDistance=6000;
+    controls.addEventListener('change',render);
+
+    document.getElementById("table").onclick=()=>transform(targets.table,2000);
+    document.getElementById("sphere").onclick=()=>transform(targets.sphere,2000);
+    document.getElementById("helix").onclick=()=>transform(targets.helix,2000);
+    document.getElementById("grid").onclick=()=>transform(targets.grid,2000);
+
+    window.addEventListener('resize',onWindowResize);
+}
+
+function transform(targets,duration){
+    TWEEN.removeAll();
+    for(let i=0;i<objects.length;i++){
+        new TWEEN.Tween(objects[i].position)
+            .to({
+                x:targets[i].position.x,
+                y:targets[i].position.y,
+                z:targets[i].position.z
+            },duration)
+            .easing(TWEEN.Easing.Exponential.InOut)
+            .start();
+    }
+}
+
+function animate(){
+    requestAnimationFrame(animate);
+    TWEEN.update();
+    controls.update();
+}
+
+function render(){
+    renderer.render(scene,camera);
+}
+
+function onWindowResize(){
+    camera.aspect=window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth,window.innerHeight);
+    render();
+}
+
+window.startApp = async function() {
+
+    document.getElementById("login-container").style.display = "none";
+    document.getElementById("menu").style.display = "block";
+
+    init();
+    await loadSheetData();
+    animate();
+};
+
+</script>
+</body>
+</html>
